@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fertilizer Recommendation Results</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto', sans-serif; background: #f9fbfd; }
+        .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 3vh;
+        }
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 18px #e0eaf799;
+            padding: 1.5em 1.2em 1em 1.2em;
+            margin-bottom: 2em;
+            min-width: 350px;
+            max-width: 600px;
+        }
+        .card.cost-effective {
+            border: 2px solid #1976d2;
+            background: #e3f0fd;
+        }
+        .card.most-precise {
+            border: 2px solid #43a047;
+            background: #e3fbe8;
+        }
+        h2 { margin-bottom: 0.6em; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 0.7em;}
+        th, td { border: 1px solid #aaa; padding: 0.5em; text-align: center; }
+        th { background: #f1f6fb; }
+        .summary { background: #f7f7c6; font-weight: bold; }
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 1em;
+        }
+        button {
+            background: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.6em 1.6em;
+            border-radius: 5px;
+            font-size: 1.05em;
+            font-weight: 700;
+            margin: 1em 0 0 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover, button:focus { background: #1565c0; }
+        .download-btn {
+            background: #0277bd;
+            color: white;
+        }
+        .download-btn:hover, .download-btn:focus {
+            background: #01579b;
+        }
+        .note-cost { color: #1976d2; font-weight: bold; }
+        .note-precise { color: #388e3c; font-weight: bold; }
+        .highpoints-table th, .highpoints-table td { font-size: 1.12em; }
+    </style>
+</head>
+<body>
+<div class="centered-container">
+    <h1>Results: Fertilizer Application & Cost</h1>
+    <p>
+        Target (total for area): N = {{ n_req * total_area }} lbs,
+        P₂O₅ = {{ p_req * total_area }} lbs,
+        K₂O = {{ k_req * total_area }} lbs
+        <br>
+        For area: {{ total_area }} acres ({{ area_type }})
+    </p>
+    {% for rec in results %}
+        <div class="card{% if rec.is_most_cost_effective %} cost-effective{% endif %}{% if rec.is_most_precise %} most-precise{% endif %}">
+            <h2>
+                {% if rec.type == 'single' %}Single Blend{% elif rec.type == 'combo' %}Combination{% else %}Custom Blend/Combo{% endif %}
+            </h2>
+            {% if rec.is_most_cost_effective %}
+                <div class="note-cost">Most cost effective</div>
+            {% endif %}
+            {% if rec.is_most_precise %}
+                <div class="note-precise">Most precise (least excess, most environmentally friendly)</div>
+            {% endif %}
+            {% if rec.note %}
+                <div style="color:#38761d; font-weight:bold;">{{ rec.note }}</div>
+            {% endif %}
+            <table class="highpoints-table">
+                <tr>
+                    <th>Blend</th>
+                    <th>Number of Bags</th>
+                </tr>
+                {% for b in rec.blends %}
+                <tr>
+                    <td>{{ b.name }}</td>
+                    <td>{{ b.bags }}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td><strong>Total Cost</strong></td>
+                    <td>${{ "%.2f"|format(rec.total_cost) }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Excess Supplied (N, P, K)</strong></td>
+                    <td>
+                        N: {{ "%.2f"|format(rec.excess_n) }}<br>
+                        P: {{ "%.2f"|format(rec.excess_p) }}<br>
+                        K: {{ "%.2f"|format(rec.excess_k) }}
+                    </td>
+                </tr>
+            </table>
+            <table>
+                <tr>
+                    <th>Blend</th>
+                    <th>Bag Size (lbs)</th>
+                    <th>Price/bag ($)</th>
+                    <th>Lbs Supplied</th>
+                    <th>Supplied N (lbs)</th>
+                    <th>P (lbs)</th>
+                    <th>K (lbs)</th>
+                </tr>
+                {% for b in rec.blends %}
+                    <tr>
+                        <td>{{ b.name }}</td>
+                        <td>{{ "%.2f"|format(b.bag_size) }}</td>
+                        <td>{{ "%.2f"|format(b.price) }}</td>
+                        <td>{{ "%.2f"|format(b.lbs_total) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_n) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_p) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_k) }}</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+    {% endfor %}
+    {% if best_overall_result %}
+        <div class="card most-precise">
+            <h2>
+                {% if best_overall_result.type == 'single' %}Single Blend{% elif best_overall_result.type == 'combo' %}Combination{% else %}Custom Blend/Combo{% endif %}
+            </h2>
+            <div class="note-precise">{{ best_overall_result.note }}</div>
+            <table class="highpoints-table">
+                <tr>
+                    <th>Blend</th>
+                    <th>Number of Bags</th>
+                </tr>
+                {% for b in best_overall_result.blends %}
+                <tr>
+                    <td>{{ b.name }}</td>
+                    <td>{{ b.bags }}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td><strong>Total Cost</strong></td>
+                    <td>${{ "%.2f"|format(best_overall_result.total_cost) }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Excess Supplied (N, P, K)</strong></td>
+                    <td>
+                        N: {{ "%.2f"|format(best_overall_result.excess_n) }}<br>
+                        P: {{ "%.2f"|format(best_overall_result.excess_p) }}<br>
+                        K: {{ "%.2f"|format(best_overall_result.excess_k) }}
+                    </td>
+                </tr>
+            </table>
+            <table>
+                <tr>
+                    <th>Blend</th>
+                    <th>Bag Size (lbs)</th>
+                    <th>Price/bag ($)</th>
+                    <th>Lbs Supplied</th>
+                    <th>Supplied N (lbs)</th>
+                    <th>P (lbs)</th>
+                    <th>K (lbs)</th>
+                </tr>
+                {% for b in best_overall_result.blends %}
+                    <tr>
+                        <td>{{ b.name }}</td>
+                        <td>{{ "%.2f"|format(b.bag_size) }}</td>
+                        <td>{{ "%.2f"|format(b.price) }}</td>
+                        <td>{{ "%.2f"|format(b.lbs_total) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_n) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_p) }}</td>
+                        <td>{{ "%.2f"|format(b.applied_k) }}</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+    {% endif %}
+    <div class="btn-group">
+        <form method="get" action="{{ url_for('customize') }}">
+            <button type="submit" id="back-btn">Back</button>
+        </form>
+        <button class="download-btn" onclick="window.print();" id="download-btn" type="button">Download as PDF</button>
+        <form method="get" action="{{ url_for('share') }}">
+            <button type="submit" id="next-btn">Next</button>
+        </form>
+    </div>
+</div>
+<script>
+document.onkeydown = function(e){
+    let next = document.getElementById("next-btn");
+    let back = document.getElementById("back-btn");
+    if (e.key === "ArrowRight" && next) next.focus();
+    if (e.key === "ArrowLeft" && back) back.focus();
+};
+</script>
+</body>
+</html>

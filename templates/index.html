@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Davidson Fertilizer Calculator</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: #f9fbfd;
+        }
+        .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 4vh;
+        }
+        form {
+            background: #fff;
+            padding: 2em 2em 1em 2em;
+            border-radius: 10px;
+            box-shadow: 0 0 20px #d0dbeb55;
+            min-width: 340px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 1em;
+            font-weight: 700;
+        }
+        label, select, input {
+            font-size: 1.08em;
+            margin-bottom: 0.7em;
+        }
+        .error {
+            color: #c0392b;
+            font-weight: bold;
+            background: #fbeee9;
+            border: 1px solid #d99;
+            border-radius: 5px;
+            padding: 0.5em 1em;
+            margin-bottom: 1em;
+            text-align: center;
+        }
+        .blend-list legend {
+            font-weight: bold;
+            margin-bottom: 0.5em;
+        }
+        .blend-list label {
+            display: block;
+            margin-bottom: 0.3em;
+        }
+        button[type=submit] {
+            background-color: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.7em 2.2em;
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: 700;
+            margin: 1em auto 0 auto;
+            display: block;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        button[type=submit]:hover, button[type=submit]:focus {
+            background: #1565c0;
+        }
+        .hint {
+            font-size: 0.95em;
+            color: #444;
+            margin-bottom: 1em;
+            background: #f6fafc;
+            border-radius: 6px;
+            padding: 0.7em 1em;
+            border-left: 4px solid #1976d2;
+        }
+        .price-note {
+            font-size: 0.93em;
+            color: #555;
+            margin-top: 0.5em;
+        }
+    </style>
+    <script>
+    function toggleAllBlends(source) {
+        let checkboxes = document.getElementsByClassName('blend-checkbox');
+        for (let i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+    function validateForm() {
+        let n = document.forms[0]["n"].value;
+        let p = document.forms[0]["p"].value;
+        let k = document.forms[0]["k"].value;
+        let area = document.forms[0]["area"].value;
+        if (n == "" || p == "" || k == "" || area == "" ||
+            isNaN(n) || isNaN(p) || isNaN(k) || isNaN(area) ||
+            n < 0 || p < 0 || k < 0 || area <= 0) {
+            alert("Please enter valid, positive numbers for all numeric fields.");
+            return false;
+        }
+        let blends = document.getElementsByClassName('blend-checkbox');
+        let selected = false;
+        for (let i = 0; i < blends.length; i++) {
+            if (blends[i].checked) selected = true;
+        }
+        if (!selected) {
+            alert("Please select at least one fertilizer blend.");
+            return false;
+        }
+        return true;
+    }
+    </script>
+</head>
+<body>
+<div class="centered-container">
+    <h1>Davidson Fertilizer Calculator</h1>
+    <form method="post" onsubmit="return validateForm()">
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        <label>N requirement (lbs/acre): <input type="number" step="any" min="0" name="n" required></label><br>
+        <label>P₂O₅ requirement (lbs/acre): <input type="number" step="any" min="0" name="p" required></label><br>
+        <label>K₂O requirement (lbs/acre): <input type="number" step="any" min="0" name="k" required></label><br>
+        <label>Area: <input type="number" step="any" min="0.01" name="area" required></label>
+        <select name="area_type">
+            <option value="acres">acres</option>
+            <option value="sqft">sq ft</option>
+        </select><br><br>
+        <div class="hint">
+            Crop specific prescribed values for N, P₂O₅, and K₂O are obtained by soil testing. Soil testing can be performed at Auburn University or other Institutions. Contact your local Co-Op for further information on how to gather a soil sample and obtain a soil test. Area input can be in acres or square feet, but must be defined by the drop tab.
+        </div>
+        <fieldset class="blend-list">
+            <legend>Select available fertilizer blends:</legend>
+            <label>
+                <input type="checkbox" id="select-all" onclick="toggleAllBlends(this)">
+                <strong>Select All</strong>
+            </label><br>
+            {% for blend in blends %}
+                <label>
+                    <input type="checkbox" class="blend-checkbox" name="blends" value="{{ blend.name }}">
+                    {{ "%d-%d-%d"|format(blend.n,blend.p,blend.k) }}, ${{ "%.2f"|format(blend.price) }} / {{ "%.0f"|format(blend.bag_size) }}lbs
+                </label>
+            {% endfor %}
+        </fieldset>
+        <div class="price-note">
+            Prices listed reflect current national averages and shall be used as reference in the absence of an updated price sheet from your local distributor.
+        </div>
+        <button type="submit" id="next-btn">Next</button>
+    </form>
+</div>
+<script>
+document.onkeydown = function(e){
+    let next = document.getElementById("next-btn");
+    if (e.key === "ArrowRight") {
+        next.focus();
+    }
+};
+</script>
+</body>
+</html>

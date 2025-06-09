@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Share & Feedback</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto', sans-serif; background: #f9fbfd; }
+        .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 4vh;
+        }
+        .share-panel {
+            background: #fff;
+            border-radius: 10px;
+            padding: 2em 3em 2em 3em;
+            box-shadow: 0 0 20px #d0dbeb44;
+            text-align: center;
+            min-width: 320px;
+            max-width: 560px;
+        }
+        h1 {
+            font-weight: 700;
+            margin-bottom: 0.7em;
+        }
+        .feedback-form label {
+            display: block;
+            margin: 1em 0 0.5em 0;
+            font-weight: bold;
+        }
+        .feedback-form input, .feedback-form textarea {
+            width: 90%;
+            padding: 0.5em;
+            margin-bottom: 1em;
+            border-radius: 5px;
+            border: 1px solid #aaa;
+            font-size: 1.05em;
+        }
+        .feedback-form button {
+            background: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.7em 2.2em;
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: 700;
+            margin-top: 1em;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        .feedback-form button:hover, .feedback-form button:focus {
+            background: #1565c0;
+        }
+        .share-link {
+            font-size: 1.08em;
+            margin: 0.8em 0;
+        }
+        .success-message {
+            color: #388e3c;
+            font-weight: bold;
+            margin-top: 1em;
+        }
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 1em;
+            margin-top: 1.5em;
+        }
+        button {
+            background: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.6em 1.6em;
+            border-radius: 5px;
+            font-size: 1.05em;
+            font-weight: 700;
+            margin: 1em 0 0 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover, button:focus { background: #1565c0; }
+    </style>
+</head>
+<body>
+<div class="centered-container">
+    <div class="share-panel">
+        <h1>Share Results & Feedback</h1>
+        <div class="share-link">
+            <b>Share this page:</b><br>
+            <input type="text" style="width:80%;" readonly value="{{ request.url_root }}" onclick="this.select();document.execCommand('copy');">
+            <span style="color:#888;font-size:0.95em;">(Copy link to share your tool)</span>
+        </div>
+        <form method="post" class="feedback-form">
+            <label for="email">Your email (optional):</label>
+            <input type="email" id="email" name="email" placeholder="you@email.com">
+            <label for="feedback">Feedback or suggestions:</label>
+            <textarea id="feedback" name="feedback" rows="4" placeholder="Let us know how we can improve!"></textarea>
+            <button type="submit">Send Feedback</button>
+            {% if feedback_sent %}
+                <div class="success-message">Thank you! Your feedback has been sent.</div>
+            {% endif %}
+        </form>
+        <div class="btn-group">
+            <form method="get" action="{{ url_for('results') }}">
+                <button type="submit" id="back-btn">Back</button>
+            </form>
+            <form method="get" action="{{ url_for('index') }}">
+                <button type="submit" id="restart-btn">Start Over</button>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+document.onkeydown = function(e){
+    let back = document.getElementById("back-btn");
+    let restart = document.getElementById("restart-btn");
+    if (e.key === "ArrowLeft" && back) back.focus();
+    if (e.key === "ArrowRight" && restart) restart.focus();
+};
+</script>
+</body>
+</html>

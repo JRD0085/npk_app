@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fertilizer Application Calculation</title>
+</head>
+<body>
+    <h1>Fertilizer Application Calculator</h1>
+    <form method="post">
+        <label>Area:</label>
+        <input type="number" step="any" name="area" required value="{{ area }}">
+        <select name="area_type">
+            <option value="acres" {% if area_type=='acres' %}selected{% endif %}>Acres</option>
+            <option value="sqft" {% if area_type=='sqft' %}selected{% endif %}>Sq.Ft.</option>
+        </select><br>
+
+        <label>Bag Size (lbs):</label>
+        <input type="number" step="any" name="bag_size" required value="{{ bag_size }}"><br>
+
+        <button type="submit">Calculate</button>
+    </form>
+
+    {% if results %}
+        <h2>Results (all selected blends)</h2>
+        <table border="1">
+            <tr>
+                <th>Blend</th>
+                <th>Bags Needed</th>
+                <th>Total Cost ($)</th>
+                <th>N Applied</th>
+                <th>P₂O₅ Applied</th>
+                <th>K₂O Applied</th>
+                <th>Excess N</th>
+                <th>Excess P₂O₅</th>
+                <th>Excess K₂O</th>
+                <th>Total Excess</th>
+            </tr>
+            {% for r in results %}
+            <tr>
+                <td>{{ r.blend }}</td>
+                <td>{{ r.bags_needed }}</td>
+                <td>{{ r.total_cost }}</td>
+                <td>{{ r.applied_n }}</td>
+                <td>{{ r.applied_p }}</td>
+                <td>{{ r.applied_k }}</td>
+                <td>{{ r.excess_n }}</td>
+                <td>{{ r.excess_p }}</td>
+                <td>{{ r.excess_k }}</td>
+                <td>{{ r.total_excess }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h2>Ranking: Lowest Total Cost</h2>
+        <ol>
+            {% for r in ranked_by_cost %}
+                <li>{{ r.blend }} - ${{ r.total_cost }} (Bags: {{ r.bags_needed }}, Total Excess: {{ r.total_excess }})</li>
+            {% endfor %}
+        </ol>
+
+        <h2>Ranking: Lowest Total Excess Nutrients</h2>
+        <ol>
+            {% for r in ranked_by_excess %}
+                <li>{{ r.blend }} - Total Excess: {{ r.total_excess }} lbs (Cost: ${{ r.total_cost }}, Bags: {{ r.bags_needed }})</li>
+            {% endfor %}
+        </ol>
+    {% endif %}
+</body>
+</html>

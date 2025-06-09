@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Customize Your Selection</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto', sans-serif; background: #f9fbfd; }
+        .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 4vh;
+        }
+        form {
+            background: #fff;
+            padding: 2em 2em 1em 2em;
+            border-radius: 10px;
+            box-shadow: 0 0 20px #d0dbeb55;
+            min-width: 340px;
+            max-width: 700px;
+            margin: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 1em;
+            font-weight: 700;
+        }
+        .recommendation {
+            border: 1.5px solid #eee;
+            border-radius: 10px;
+            margin: 1.2em auto;
+            padding: 1.2em 1.2em 1.2em 2em;
+            background: #f8fafc;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 0 8px #e0eaf7bb;
+            position: relative;
+        }
+        .blend-table {
+            width: 100%;
+            margin-bottom: 1em;
+        }
+        .blend-table th, .blend-table td {
+            padding: 0.3em 0.5em;
+            text-align: left;
+        }
+        label {
+            font-size: 1.05em;
+        }
+        button[type=submit], .btn-group button {
+            background-color: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.7em 2.2em;
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: 700;
+            margin: 1em auto 0 auto;
+            display: block;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        button[type=submit]:hover, button[type=submit]:focus, .btn-group button:hover, .btn-group button:focus {
+            background: #1565c0;
+        }
+        .custom-blend {
+            border: 1px dashed #999;
+            margin: 1.5em 0 1em 0;
+            padding: 1.2em;
+            border-radius: 7px;
+            background: #f0f7fc;
+            width: 100%;
+            max-width: 600px;
+        }
+        .hidden { display: none; }
+        .btn-group {
+            display: flex;
+            justify-content: space-between;
+            max-width: 350px;
+            margin: 2em auto 0 auto;
+        }
+        .custom-blend-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 1em;
+            margin-top: 1em;
+        }
+        .blend-fields-group {
+            background: #e3f0fd;
+            border-radius: 8px;
+            padding: 0.7em 1em 1em 1em;
+            margin-bottom: 0.5em;
+            box-shadow: 0 1px 4px #d0e3f7bb;
+        }
+        .blend-fields-group h4 {
+            margin: 0.2em 0 0.6em 0;
+            font-size: 1.06em;
+            color: #2979ff;
+        }
+        .blend-fields-group label {
+            display: block;
+            margin-bottom: 0.3em;
+        }
+        .blend-fields-group input {
+            margin-left: 0.5em;
+            width: 70px;
+        }
+    </style>
+    <script>
+        function toggleSelectAllRecommendations(source) {
+            let checkboxes = document.getElementsByName('select');
+            for (let i = 0; i < checkboxes.length; i++) {
+                checkboxes[i].checked = source.checked;
+            }
+        }
+        function showCustomBlendFields(idx, enabled) {
+            document.getElementById('custom_'+idx+'_fields').style.display = enabled ? 'flex' : 'none';
+        }
+        function toggleBlendCount(idx, count) {
+            document.getElementById('custom_'+idx+'_blend_0').style.display = 'block';
+            document.getElementById('custom_'+idx+'_blend_1').style.display = (count > 1) ? 'block' : 'none';
+        }
+    </script>
+</head>
+<body>
+<div class="centered-container">
+    <h1>Customize Your Selection</h1>
+    <form method="post" style="width:100%; max-width:700px;">
+        <div style="text-align:center; margin-bottom:1em;">
+            <label>
+                <input type="checkbox" onclick="toggleSelectAllRecommendations(this)">
+                <strong>Select All</strong>
+            </label>
+        </div>
+        <input type="hidden" name="rec_count" value="{{ recommendations|length }}">
+
+        {% for rec in recommendations %}
+            {% set rec_idx = loop.index0 %}
+            <div class="recommendation" style="max-width:600px; margin:auto;">
+                <label>
+                    <input type="checkbox" name="select" value="{{ rec_idx }}" {% if rec.selected %}checked{% endif %}>
+                    <strong>Include this recommendation</strong>
+                </label>
+                <table class="blend-table">
+                    <tr>
+                        <th>Blend Name</th><th>N</th><th>P</th><th>K</th>
+                        <th>Price per Bag ($)</th><th>Bag Size (lbs)</th><th>Lbs/acre (computed)</th>
+                    </tr>
+                    {% for b in rec.blends %}
+                        {% set b_idx = loop.index0 %}
+                        <tr>
+                            <td>
+                                <input type="hidden" name="rec_{{rec_idx}}_blend_{{b_idx}}_name" value="{{ b.name }}">
+                                {{ b.name }}
+                            </td>
+                            <td>
+                                <input type="hidden" name="rec_{{rec_idx}}_blend_{{b_idx}}_n" value="{{ b.n }}">
+                                {{ b.n }}
+                            </td>
+                            <td>
+                                <input type="hidden" name="rec_{{rec_idx}}_blend_{{b_idx}}_p" value="{{ b.p }}">
+                                {{ b.p }}
+                            </td>
+                            <td>
+                                <input type="hidden" name="rec_{{rec_idx}}_blend_{{b_idx}}_k" value="{{ b.k }}">
+                                {{ b.k }}
+                            </td>
+                            <td>
+                                <input type="number" step="any"
+                                  name="rec_{{rec_idx}}_blend_{{b_idx}}_price"
+                                  value="{{ b.price }}">
+                            </td>
+                            <td>
+                                <input type="number" step="any"
+                                  name="rec_{{rec_idx}}_blend_{{b_idx}}_bag_size"
+                                  value="{{ b.bag_size }}">
+                            </td>
+                            <td>
+                                <input type="hidden" name="rec_{{rec_idx}}_blend_{{b_idx}}_lbs_per_acre"
+                                  value="{{ b.lbs_per_acre }}">
+                                {{ "%.2f"|format(b.lbs_per_acre) }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+                <input type="hidden" name="rec_{{rec_idx}}_blend_count" value="{{ rec.blends|length }}">
+                <input type="hidden" name="rec_{{rec_idx}}_type" value="{{ rec.type }}">
+                <input type="hidden" name="rec_{{rec_idx}}_note" value="{{ rec.note }}">
+            </div>
+        {% endfor %}
+
+        <h2>Custom Blends/Combinations (up to {{ max_custom }})</h2>
+        <input type="hidden" name="custom_count" value="{{ max_custom }}">
+        {% for custom_idx in range(max_custom) %}
+            <div class="custom-blend" style="max-width:600px; margin:auto;">
+                <label>
+                    <input type="checkbox" name="custom_{{custom_idx}}_enabled" onchange="showCustomBlendFields({{custom_idx}}, this.checked)">
+                    <strong>Enable Custom Blend/Combo #{{ custom_idx+1 }}</strong>
+                </label>
+                <div id="custom_{{custom_idx}}_fields" class="custom-blend-fields hidden">
+                    <label>Number of blends:
+                        <select name="custom_{{custom_idx}}_blend_count"
+                                onchange="toggleBlendCount({{custom_idx}}, this.value)">
+                            <option value="1">Single Blend</option>
+                            <option value="2">Combination (2 blends)</option>
+                        </select>
+                    </label>
+                    <div id="custom_{{custom_idx}}_blend_0" class="blend-fields-group">
+                        <h4>Blend 1</h4>
+                        <label>Name: <input name="custom_{{custom_idx}}_blend_0_name" value="Custom {{custom_idx+1}}-A"></label>
+                        <label>N: <input type="number" step="any" name="custom_{{custom_idx}}_blend_0_n"></label>
+                        <label>P: <input type="number" step="any" name="custom_{{custom_idx}}_blend_0_p"></label>
+                        <label>K: <input type="number" step="any" name="custom_{{custom_idx}}_blend_0_k"></label>
+                        <label>Price: <input type="number" step="any" name="custom_{{custom_idx}}_blend_0_price"></label>
+                        <label>Bag Size: <input type="number" step="any" name="custom_{{custom_idx}}_blend_0_bag_size"></label>
+                    </div>
+                    <div id="custom_{{custom_idx}}_blend_1" class="blend-fields-group hidden">
+                        <h4>Blend 2</h4>
+                        <label>Name: <input name="custom_{{custom_idx}}_blend_1_name" value="Custom {{custom_idx+1}}-B"></label>
+                        <label>N: <input type="number" step="any" name="custom_{{custom_idx}}_blend_1_n"></label>
+                        <label>P: <input type="number" step="any" name="custom_{{custom_idx}}_blend_1_p"></label>
+                        <label>K: <input type="number" step="any" name="custom_{{custom_idx}}_blend_1_k"></label>
+                        <label>Price: <input type="number" step="any" name="custom_{{custom_idx}}_blend_1_price"></label>
+                        <label>Bag Size: <input type="number" step="any" name="custom_{{custom_idx}}_blend_1_bag_size"></label>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+
+        <div class="btn-group">
+            <form method="get" action="{{ url_for('recommendations') }}" style="margin:0;display:inline;">
+                <button type="submit" id="back-btn">Back</button>
+            </form>
+            <button type="submit" id="next-btn">Next</button>
+        </div>
+    </form>
+</div>
+<script>
+document.onkeydown = function(e){
+    let next = document.getElementById("next-btn");
+    let back = document.getElementById("back-btn");
+    if (e.key === "ArrowRight" && next) next.focus();
+    if (e.key === "ArrowLeft" && back) back.focus();
+};
+</script>
+</body>
+</html>

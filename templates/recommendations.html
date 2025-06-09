@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Best Prescription Solutions</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto', sans-serif; background: #f9fbfd; }
+        .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 3vh;
+        }
+        .recommendation, .best-overall {
+            border: 1.5px solid #eee;
+            border-radius: 10px;
+            margin: 1.2em 0;
+            padding: 1.2em 1.5em 1.2em 1.5em;
+            background: #fff;
+            width: 500px;
+            max-width: 97vw;
+            box-shadow: 0 0 16px #e0eaf7bb;
+            position: relative;
+        }
+        .most-precise {
+            border-color: #43a047;
+            background: #e3fbe8;
+        }
+        .blend-list { margin-bottom: 0.5em; }
+        .blend-list li { margin-bottom: 0.3em; }
+        .error {
+            color: #c0392b;
+            font-weight: bold;
+            background: #fbeee9;
+            border: 1px solid #d99;
+            border-radius: 5px;
+            padding: 0.5em 1em;
+            margin-bottom: 1em;
+            text-align: center;
+        }
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 1em;
+        }
+        button {
+            background: #2979ff;
+            color: white;
+            border: none;
+            padding: 0.6em 1.6em;
+            border-radius: 5px;
+            font-size: 1.05em;
+            font-weight: 700;
+            margin: 1em 0 0 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover, button:focus { background: #1565c0; }
+        .prescription-line {
+            font-size: 1.1em;
+            margin-bottom: 1em;
+            text-align: center;
+            color: #333;
+        }
+        .note-precise { color: #388e3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div class="centered-container">
+    <h1>Best Prescription Solutions</h1>
+    <div class="prescription-line">
+        Prescription: N={{ inputs.n }} lbs/acre, P₂O₅={{ inputs.p }} lbs/acre, K₂O={{ inputs.k }} lbs/acre, Area: {{ inputs.area }} {{ inputs.area_type }}
+    </div>
+    {% if impossible %}
+        <div class="error">No available blend or combination can meet your prescription with the selected products.<br>
+        Please go <a href="{{ url_for('index') }}">back</a> and select different blends or adjust your prescription.</div>
+    {% else %}
+        {% for m in matches %}
+            <div class="recommendation">
+                <strong>
+                    {% if m.type == 'single' %}
+                        Single Blend:
+                    {% else %}
+                        Combination:
+                    {% endif %}
+                </strong>
+                <ul class="blend-list">
+                    {% for blend, lbs_per_acre in m.blends %}
+                        <li>
+                            {{ "%d-%d-%d"|format(blend.n,blend.p,blend.k) }}, ${{ "%.2f"|format(blend.price) }} / {{ "%.0f"|format(blend.bag_size) }}lbs
+                        </li>
+                    {% endfor %}
+                </ul>
+                <em>Projected cost and bag counts on next page after customization.</em>
+            </div>
+        {% endfor %}
+        {% if best_overall %}
+            <div class="recommendation most-precise">
+                <strong>
+                    {% if best_overall.type == 'single' %}
+                        Single Blend (Best Overall):
+                    {% else %}
+                        Combination (Best Overall):
+                    {% endif %}
+                </strong>
+                <ul class="blend-list">
+                    {% for blend, lbs_per_acre in best_overall.blends %}
+                        <li>
+                            {{ "%d-%d-%d"|format(blend.n,blend.p,blend.k) }}, ${{ "%.2f"|format(blend.price) }} / {{ "%.0f"|format(blend.bag_size) }}lbs
+                        </li>
+                    {% endfor %}
+                </ul>
+                <div class="note-precise">
+                    This is the best overall match, but you did not select it as available to you.
+                </div>
+                <em>Projected cost and bag counts on next page after customization.</em>
+            </div>
+        {% endif %}
+    {% endif %}
+    <div class="btn-group">
+        <form method="get" action="{{ url_for('index') }}">
+            <button type="submit" id="back-btn">Back</button>
+        </form>
+        {% if not impossible %}
+        <form method="get" action="{{ url_for('customize') }}">
+            <button type="submit" id="next-btn">Next</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+<script>
+document.onkeydown = function(e){
+    let next = document.getElementById("next-btn");
+    let back = document.getElementById("back-btn");
+    if (e.key === "ArrowRight" && next) next.focus();
+    if (e.key === "ArrowLeft" && back) back.focus();
+};
+</script>
+</body>
+</html>

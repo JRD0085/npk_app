@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fertilizer Recommendations</title>
+    <style>
+        .recommendation { border: 1px solid #ccc; margin: 1em 0; padding: 1em; }
+        .best-overall { background: #c6f7d4 !important; border: 2px solid #2e8b57; }
+        .blend-list { margin-bottom: 0.5em; }
+        .blend-list li { margin-bottom: 0.3em; }
+        .note { color: #2e8b57; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Top Fertilizer Matches</h1>
+    <p>
+        Prescription: N={{ inputs.n }} lbs/acre, P₂O₅={{ inputs.p }} lbs/acre, K₂O={{ inputs.k }} lbs/acre<br>
+        Area: {{ inputs.area }} {{ inputs.area_type }}
+    </p>
+    {% for m in matches %}
+        <div class="recommendation">
+            <strong>
+                {% if m.type == 'single' %}
+                    Single Blend:
+                {% else %}
+                    Combination:
+                {% endif %}
+            </strong>
+            <ul class="blend-list">
+                {% for blend, lbs_per_acre in m.blends %}
+                    <li>
+                        {{ blend.name }} (N: {{ blend.n }}, P: {{ blend.p }}, K: {{ blend.k }})<br>
+                        Default price: ${{ "%.2f"|format(blend.price) }}<br>
+                        Default bag size: {{ blend.bag_size }} lbs
+                    </li>
+                {% endfor %}
+            </ul>
+            <em>Projected cost and bag counts on next page after customization.</em>
+        </div>
+    {% endfor %}
+
+    {% if show_best_overall %}
+        <div class="recommendation best-overall">
+            <span class="note">Note: This is the best overall match, but you did not select it as available to you.</span>
+            <br><br>
+            <strong>
+                {% if best_overall.type == 'single' %}
+                    Single Blend:
+                {% else %}
+                    Combination:
+                {% endif %}
+            </strong>
+            <ul class="blend-list">
+                {% for blend, lbs_per_acre in best_overall.blends %}
+                    <li>
+                        {{ blend.name }} (N: {{ blend.n }}, P: {{ blend.p }}, K: {{ blend.k }})<br>
+                        Default price: ${{ "%.2f"|format(blend.price) }}<br>
+                        Default bag size: {{ blend.bag_size }} lbs
+                    </li>
+                {% endfor %}
+            </ul>
+            <form method="post" action="#">
+                <button type="button" onclick="alert('Added to your blends! (Implementation in next step)')">Add it to my blends</button>
+            </form>
+            <em>Projected cost and bag counts on next page after customization.</em>
+        </div>
+    {% endif %}
+
+    <form method="get" action="{{ url_for('index') }}">
+        <button type="submit">Back</button>
+    </form>
+    <form method="get" action="#">
+        <!-- In Step 3 this will go to the price/bag customization page -->
+        <button type="submit">Next</button>
+    </form>
+</body>
+</html>

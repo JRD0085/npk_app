@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Fertilizer Blends</title>
+</head>
+<body>
+    <h1>Select Fertilizer Blend(s) and Enter Price</h1>
+    <form method="post">
+        {% for blend in blends %}
+            <input type="checkbox" name="blend" value="{{ blend.name }}" id="{{ blend.name }}">
+            <label for="{{ blend.name }}">{{ blend.name }} (N: {{ blend.n }}, P₂O₅: {{ blend.p }}, K₂O: {{ blend.k }})</label>
+            <label>Price per Bag ($):</label>
+            <input type="number" step="any" name="price_{{ blend.name }}" required><br>
+        {% endfor %}
+        <button type="submit">Continue</button>
+    </form>
+</body>
+</html>
