@@ -3,48 +3,12 @@ import csv
 import itertools
 import math
 import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, session
-from flask_mail import Mail, Message
-from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, send_file
+import io
+from fpdf import FPDF
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
-
-# Flask-Mail configuration (update EMAIL_USER and EMAIL_PASS in your environment)
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('EMAIL_USER', 'your_email@gmail.com')
-app.config['MAIL_PASSWORD'] = os.environ.get('EMAIL_PASS', 'your_app_password')
-app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('EMAIL_USER', 'your_email@gmail.com')
-mail = Mail(app)
-
-FEEDBACK_LIMIT = 1000
-FEEDBACK_COUNTER_FILE = "feedback_count.txt"
-
-def can_accept_feedback():
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-    count = 0
-    if os.path.exists(FEEDBACK_COUNTER_FILE):
-        with open(FEEDBACK_COUNTER_FILE, "r") as f:
-            lines = f.readlines()
-            if lines and lines[0].startswith(today_str):
-                count = int(lines[0].strip().split(",")[1])
-            else:
-                count = 0
-    return count < FEEDBACK_LIMIT
-
-def increment_feedback_counter():
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-    count = 0
-    if os.path.exists(FEEDBACK_COUNTER_FILE):
-        with open(FEEDBACK_COUNTER_FILE, "r") as f:
-            lines = f.readlines()
-            if lines and lines[0].startswith(today_str):
-                count = int(lines[0].strip().split(",")[1])
-    count += 1
-    with open(FEEDBACK_COUNTER_FILE, "w") as f:
-        f.write(f"{today_str},{count}\n")
+app.secret_key = os.environ.get('SECRET_KEY', 'your_secret_key')
 
 def load_fertilizer_blends(filename="fertilizers.csv"):
     blends = []
@@ -62,153 +26,259 @@ def load_fertilizer_blends(filename="fertilizers.csv"):
     return blends
 
 def solve_single_blend(n_req, p_req, k_req, blend):
-    reqs = []
-    for nutrient, perc in zip([n_req, p_req, k_req], [blend["n"], blend["p"], blend["k"]]):
-        if perc > 0:
-            reqs.append(nutrient / (perc / 100))
-        else:
-            reqs.append(0 if nutrient <= 0 else float('inf'))
-    lbs_per_acre = max(reqs)
-    if math.isinf(lbs_per_acre) or lbs_per_acre <= 0:
+    if (n_req > 0 and blend["n"] == 0) or (p_req > 0 and blend["p"] == 0) or (k_req > 0 and blend["k"] == 0):
         return None
-    if (blend["n"] <= 0 and n_req > 0) or (blend["p"] <= 0 and p_req > 0) or (blend["k"] <= 0 and k_req > 0):
-        return None
+    lbs_per_acre = 0
+    if blend["n"] > 0:
+        lbs_per_acre = max(lbs_per_acre, n_req / (blend["n"] / 100))
+    if blend["p"] > 0:
+        lbs_per_acre = max(lbs_per_acre, p_req / (blend["p"] / 100))
+    if blend["k"] > 0:
+        lbs_per_acre = max(lbs_per_acre, k_req / (blend["k"] / 100))
     applied_n = lbs_per_acre * (blend["n"] / 100)
     applied_p = lbs_per_acre * (blend["p"] / 100)
     applied_k = lbs_per_acre * (blend["k"] / 100)
-    excess_n = max(0, applied_n - n_req)
-    excess_p = max(0, applied_p - p_req)
-    excess_k = max(0, applied_k - k_req)
+    if applied_n < n_req - 1e-6 or applied_p < p_req - 1e-6 or applied_k < k_req - 1e-6:
+        return None
     return {
         "type": "single",
         "blends": [(blend, lbs_per_acre)],
-        "excess_n": excess_n,
-        "excess_p": excess_p,
-        "excess_k": excess_k,
         "names": [blend["name"]],
+        "applied_n": applied_n,
+        "applied_p": applied_p,
+        "applied_k": applied_k,
+        "custom": blend.get("custom", False),
     }
 
 def solve_two_blend(n_req, p_req, k_req, blend1, blend2):
     if blend1["name"] == blend2["name"]:
         return None
+    for idx, req in enumerate([n_req, p_req, k_req]):
+        if req > 0 and blend1[["n", "p", "k"][idx]] == 0 and blend2[["n", "p", "k"][idx]] == 0:
+            return None
     A = np.array([
-        [blend1["n"]/100, blend2["n"]/100],
-        [blend1["p"]/100, blend2["p"]/100],
-        [blend1["k"]/100, blend2["k"]/100]
+        [blend1["n"] / 100, blend2["n"] / 100],
+        [blend1["p"] / 100, blend2["p"] / 100],
+        [blend1["k"] / 100, blend2["k"] / 100]
     ])
-    req = np.array([n_req, p_req, k_req])
-    valid_rows = [i for i in range(3) if A[i,0] > 0 or A[i,1] > 0]
-    if not valid_rows:
+    b = np.array([n_req, p_req, k_req])
+    rows = [i for i, req in enumerate(b) if req > 0]
+    if not rows:
         return None
-    A_reduced = A[valid_rows, :]
-    req_reduced = req[valid_rows]
+    A = A[rows]
+    b = b[rows]
     try:
-        x, residuals, rank, s = np.linalg.lstsq(A_reduced, req_reduced, rcond=None)
-        x = np.maximum(x, 0)
-        if any(xi < 0.01 for xi in x):
+        res = np.linalg.lstsq(A, b, rcond=None)
+        x = np.maximum(res[0], 0)
+        if any(xi < 1e-3 for xi in x):
             return None
         applied = A @ x
-        if any(applied[i] < req[i] and req[i] > 0 for i in range(3)):
+        if any(applied[i] < b[i] - 1e-6 for i in range(len(b))):
             return None
-        excess = applied - req
-        excess_n = max(0, excess[0])
-        excess_p = max(0, excess[1])
-        excess_k = max(0, excess[2])
+        applied_n = x[0] * blend1["n"] / 100 + x[1] * blend2["n"] / 100
+        applied_p = x[0] * blend1["p"] / 100 + x[1] * blend2["p"] / 100
+        applied_k = x[0] * blend1["k"] / 100 + x[1] * blend2["k"] / 100
         return {
             "type": "combo",
             "blends": [(blend1, x[0]), (blend2, x[1])],
-            "excess_n": excess_n,
-            "excess_p": excess_p,
-            "excess_k": excess_k,
             "names": [blend1["name"], blend2["name"]],
+            "applied_n": applied_n,
+            "applied_p": applied_p,
+            "applied_k": applied_k,
+            "custom": blend1.get("custom", False) or blend2.get("custom", False),
         }
     except Exception:
         return None
 
-def best_matches(n_req, p_req, k_req, blends, area, area_type):
-    results = []
+def apply_bag_rounding(candidate, area, area_type, total_n, total_p, total_k):
     if area_type == 'acres':
         total_area = area
     else:
         total_area = area / 43560
+    blends_result = []
+    for blend, lbs_per_acre in candidate["blends"]:
+        lbs_total = lbs_per_acre * total_area
+        bags = math.ceil(lbs_total / blend["bag_size"])
+        blends_result.append({
+            "name": blend["name"],
+            "bags": bags,
+            "cost": bags * blend["price"],
+            "applied_n": bags * blend["bag_size"] * (blend["n"]/100),
+            "applied_p": bags * blend["bag_size"] * (blend["p"]/100),
+            "applied_k": bags * blend["bag_size"] * (blend["k"]/100),
+            "n": blend["n"],
+            "p": blend["p"],
+            "k": blend["k"],
+            "price": blend["price"],
+            "bag_size": blend["bag_size"],
+            "custom": blend.get("custom", False)
+        })
+    total_cost = sum(b["cost"] for b in blends_result)
+    total_applied_n = sum(b["applied_n"] for b in blends_result)
+    total_applied_p = sum(b["applied_p"] for b in blends_result)
+    total_applied_k = sum(b["applied_k"] for b in blends_result)
+    if (total_applied_n < total_n - 1e-6 or
+        total_applied_p < total_p - 1e-6 or
+        total_applied_k < total_k - 1e-6):
+        return None
+    return {
+        "type": candidate["type"],
+        "names": candidate["names"],
+        "blends": blends_result,
+        "total_cost": total_cost,
+        "applied_n": total_applied_n,
+        "applied_p": total_applied_p,
+        "applied_k": total_applied_k,
+        "custom": candidate.get("custom", False)
+    }
 
-    # Only recommend the cheapest single blend if all nutrients are equal
-    if n_req == p_req == k_req:
-        cheapest = None
-        for blend in blends:
-            res = solve_single_blend(n_req, p_req, k_req, blend)
-            if res is not None:
-                lbs_needed = res["blends"][0][1] * total_area
-                bags_needed = math.ceil(lbs_needed / blend["bag_size"])
-                cost = bags_needed * blend["price"]
-                res.update({
-                    "total_cost": cost,
-                    "bags": [(blend["name"], bags_needed)],
-                    "applied_n": res["blends"][0][1] * total_area * (blend["n"] / 100),
-                    "applied_p": res["blends"][0][1] * total_area * (blend["p"] / 100),
-                    "applied_k": res["blends"][0][1] * total_area * (blend["k"] / 100),
-                    "details": [(blend["name"], res["blends"][0][1])],
-                })
-                if cheapest is None or cost < cheapest["total_cost"]:
-                    cheapest = res
-        if cheapest:
-            cheapest["is_most_cost_effective"] = True
-            cheapest["is_most_precise"] = False
-            cheapest["total_excess"] = cheapest["excess_n"] + cheapest["excess_p"] + cheapest["excess_k"]
-            return [cheapest]
-        else:
-            return []
-    # Otherwise, allow combos as before
-    for blend in blends:
+def deduplicate_solutions(solutions):
+    seen = set()
+    unique = []
+    for sol in solutions:
+        key = tuple(sorted((b['name'], b['bags']) for b in sol['blends']))
+        if key not in seen:
+            seen.add(key)
+            unique.append(sol)
+    return unique
+
+def extract_custom_blends_from_form(form):
+    custom_blends = []
+    for j in range(2):
+        name = form.get(f"custom_blend_{j}_name", "").strip()
+        if not name:
+            continue
+        try:
+            n_val = float(form.get(f"custom_blend_{j}_n", 0))
+            p_val = float(form.get(f"custom_blend_{j}_p", 0))
+            k_val = float(form.get(f"custom_blend_{j}_k", 0))
+        except Exception:
+            continue
+        try:
+            price = float(form.get(f"custom_blend_{j}_price", 0))
+        except Exception:
+            price = 0
+        try:
+            bag_size = float(form.get(f"custom_blend_{j}_bag_size", 50))
+            if bag_size <= 0:
+                bag_size = 50
+        except Exception:
+            bag_size = 50
+        custom_blends.append({
+            "name": name,
+            "n": n_val,
+            "p": p_val,
+            "k": k_val,
+            "price": price,
+            "bag_size": bag_size,
+            "custom": True
+        })
+    return custom_blends
+
+def get_recommendations(n_req, p_req, k_req, all_blends, area, area_type, user_selected_blends=None, custom_blends=None):
+    if area_type == "acres":
+        total_n = n_req * area
+        total_p = p_req * area
+        total_k = k_req * area
+    else:
+        total_n = n_req * area / 43560
+        total_p = p_req * area / 43560
+        total_k = k_req * area / 43560
+
+    filtered_blends = [b for b in all_blends if (not user_selected_blends or b["name"] in user_selected_blends)]
+    candidate_blends = list(filtered_blends)
+    if custom_blends is not None and len(custom_blends) > 0:
+        candidate_blends += custom_blends
+
+    single_blend_candidates = []
+    for blend in candidate_blends:
         res = solve_single_blend(n_req, p_req, k_req, blend)
-        if res is not None:
-            lbs_needed = res["blends"][0][1] * total_area
-            bags_needed = math.ceil(lbs_needed / blend["bag_size"])
-            cost = bags_needed * blend["price"]
-            res.update({
-                "total_cost": cost,
-                "bags": [(blend["name"], bags_needed)],
-                "applied_n": res["blends"][0][1] * total_area * (blend["n"] / 100),
-                "applied_p": res["blends"][0][1] * total_area * (blend["p"] / 100),
-                "applied_k": res["blends"][0][1] * total_area * (blend["k"] / 100),
-                "details": [(blend["name"], res["blends"][0][1])],
-            })
-            results.append(res)
+        if res:
+            rounded = apply_bag_rounding(res, area, area_type, total_n, total_p, total_k)
+            if rounded:
+                rounded['excess_n'] = rounded["applied_n"] - total_n
+                rounded['excess_p'] = rounded["applied_p"] - total_p
+                rounded['excess_k'] = rounded["applied_k"] - total_k
+                rounded['excess_warning'] = ""
+                single_blend_candidates.append(rounded)
 
-    for blend1, blend2 in itertools.combinations(blends, 2):
+    combo_candidates = []
+    for blend1, blend2 in itertools.combinations(candidate_blends, 2):
+        if blend1["name"] == blend2["name"]:
+            continue
         res = solve_two_blend(n_req, p_req, k_req, blend1, blend2)
-        if res is not None:
-            lbs1 = res["blends"][0][1] * total_area
-            lbs2 = res["blends"][1][1] * total_area
-            bags1 = math.ceil(lbs1 / blend1["bag_size"])
-            bags2 = math.ceil(lbs2 / blend2["bag_size"])
-            cost = bags1 * blend1["price"] + bags2 * blend2["price"]
-            res.update({
-                "total_cost": cost,
-                "bags": [(blend1["name"], bags1), (blend2["name"], bags2)],
-                "applied_n": lbs1 * (blend1["n"] / 100) + lbs2 * (blend2["n"] / 100),
-                "applied_p": lbs1 * (blend1["p"] / 100) + lbs2 * (blend2["p"] / 100),
-                "applied_k": lbs1 * (blend1["k"] / 100) + lbs2 * (blend2["k"] / 100),
-                "details": [(blend1["name"], res["blends"][0][1]), (blend2["name"], res["blends"][1][1])],
-            })
-            results.append(res)
+        if res:
+            rounded = apply_bag_rounding(res, area, area_type, total_n, total_p, total_k)
+            if rounded:
+                rounded['excess_n'] = rounded["applied_n"] - total_n
+                rounded['excess_p'] = rounded["applied_p"] - total_p
+                rounded['excess_k'] = rounded["applied_k"] - total_k
+                rounded['excess_warning'] = ""
+                combo_candidates.append(rounded)
 
-    if not results:
-        return []
-    for r in results:
+    all_candidates = single_blend_candidates + combo_candidates
+    all_candidates = deduplicate_solutions(all_candidates)
+
+    avg_cost = sum(r["total_cost"] for r in all_candidates) / len(all_candidates) if all_candidates else 1
+    for r in all_candidates:
         r["total_excess"] = r["excess_n"] + r["excess_p"] + r["excess_k"]
-    min_cost = min(r["total_cost"] for r in results)
-    min_excess = min(r["total_excess"] for r in results)
-    for r in results:
-        r["is_most_cost_effective"] = math.isclose(r["total_cost"], min_cost)
-        r["is_most_precise"] = math.isclose(r["total_excess"], min_excess)
-    results.sort(key=lambda r: (r["total_cost"], r["total_excess"]))
-    return results[:3]
+        r["score"] = (r["total_cost"] - avg_cost) * 2 + r["total_excess"]
+
+    all_candidates.sort(key=lambda r: r["score"])
+    top3 = all_candidates[:3]
+
+    if top3:
+        min_cost = min(r["total_cost"] for r in top3)
+        min_waste = min(r["total_excess"] for r in top3)
+        for r in top3:
+            r["highlight"] = ""
+            is_min_cost = abs(r["total_cost"] - min_cost) < 1e-3
+            is_min_waste = abs(r["total_excess"] - min_waste) < 1e-3
+            if is_min_cost and is_min_waste:
+                r["highlight"] = "highlight-green"
+            elif is_min_cost:
+                r["highlight"] = "highlight-orange"
+            elif is_min_waste:
+                r["highlight"] = "highlight-blue"
+
+    note = None
+    if not top3:
+        note = "No solution could be found with the selected blends and prescription. Try selecting more blends or adjusting your N, P, K requirements."
+
+    custom_results = []
+    if custom_blends is not None and len(custom_blends) > 0:
+        if len(custom_blends) == 1:
+            blend = custom_blends[0]
+            res = solve_single_blend(n_req, p_req, k_req, blend)
+            if res:
+                rounded = apply_bag_rounding(res, area, area_type, total_n, total_p, total_k)
+                if rounded:
+                    rounded['excess_n'] = rounded["applied_n"] - total_n
+                    rounded['excess_p'] = rounded["applied_p"] - total_p
+                    rounded['excess_k'] = rounded["applied_k"] - total_k
+                    rounded['custom'] = True
+                    rounded['note'] = "Custom blend result (may not fully meet all requirements)."
+                    custom_results.append(rounded)
+        elif len(custom_blends) == 2:
+            blend1, blend2 = custom_blends
+            res = solve_two_blend(n_req, p_req, k_req, blend1, blend2)
+            if res:
+                rounded = apply_bag_rounding(res, area, area_type, total_n, total_p, total_k)
+                if rounded:
+                    rounded['excess_n'] = rounded["applied_n"] - total_n
+                    rounded['excess_p'] = rounded["applied_p"] - total_p
+                    rounded['excess_k'] = rounded["applied_k"] - total_k
+                    rounded['custom'] = True
+                    rounded['note'] = "Custom combination result (may not fully meet all requirements)."
+                    custom_results.append(rounded)
+    return top3, custom_results, note
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     blends = load_fertilizer_blends()
+    form_defaults = session.get('inputs', {})
     error = None
+
     if request.method == 'POST':
         try:
             n = float(request.form.get('n', 0))
@@ -217,350 +287,169 @@ def index():
             area = float(request.form.get('area', 0))
         except ValueError:
             error = "All numeric fields must be valid numbers greater than zero."
-            return render_template('index.html', blends=blends, error=error)
+            return render_template('index.html', blends=blends, error=error, form_defaults=request.form)
         area_type = request.form.get('area_type')
         selected_blends = request.form.getlist('blends')
-        if not selected_blends or n < 0 or p < 0 or k < 0 or area <= 0:
-            error = "Please ensure all numeric fields are filled with valid positive values and at least one blend is selected."
-            return render_template('index.html', blends=blends, error=error)
+
+        # Handle custom blends: only process if user enabled and provided at least one valid blend
+        custom_enabled = request.form.get("custom_enabled")
+        custom_blends = []
+        if custom_enabled:
+            custom_blends = extract_custom_blends_from_form(request.form)
+        # Save only valid custom blends, else save empty
+        session['custom_blends'] = custom_blends
+
+        for blend in blends:
+            bname_key = blend['name'].replace(' ', '_')
+            price_key = f"price_{bname_key}"
+            bag_size_key = f"bag_size_{bname_key}"
+            if price_key in request.form:
+                try:
+                    blend['price'] = float(request.form[price_key])
+                except Exception:
+                    pass
+            if bag_size_key in request.form:
+                try:
+                    bag_size_val = float(request.form[bag_size_key])
+                    if bag_size_val > 0:
+                        blend['bag_size'] = bag_size_val
+                    else:
+                        blend['bag_size'] = 50
+                except Exception:
+                    blend['bag_size'] = 50
+
         session['inputs'] = {
             'n': n, 'p': p, 'k': k,
             'area': area, 'area_type': area_type,
             'selected_blends': selected_blends
         }
-        return redirect(url_for('recommendations'))
-    return render_template('index.html', blends=blends, error=error)
-
-@app.route('/recommendations', methods=['GET', 'POST'])
-def recommendations():
-    blends = load_fertilizer_blends()
-    inputs = session.get('inputs', {})
-    n = inputs.get('n', 0)
-    p = inputs.get('p', 0)
-    k = inputs.get('k', 0)
-    area = inputs.get('area', 0)
-    area_type = inputs.get('area_type', 'acres')
-    selected_blend_names = inputs.get('selected_blends', [])
-
-    selected_blends = [b for b in blends if b["name"] in selected_blend_names]
-    matches = best_matches(n, p, k, selected_blends, area, area_type)
-    all_matches = best_matches(n, p, k, blends, area, area_type)
-    best_overall = all_matches[0] if all_matches else None
-
-    impossible = not matches
-
-    # Only show the green best overall box if the user's matches do NOT contain the best overall solution.
-    def match_key(m):
-        return set(m["names"])
-    matches_keys = [match_key(m) for m in matches]
-    best_key = match_key(best_overall) if best_overall else None
-    show_best_overall = best_overall and best_key not in matches_keys
-
-    return render_template(
-        'recommendations.html',
-        matches=matches,
-        best_overall=best_overall if show_best_overall else None,
-        impossible=impossible,
-        inputs=inputs
-    )
-
-@app.route('/customize', methods=['GET', 'POST'])
-def customize():
-    if request.method == 'POST':
-        recommendations = []
-        selected = request.form.getlist('select')
-        rec_count = int(request.form.get('rec_count', 0))
-        for i in range(rec_count):
-            rec_prefix = f"rec_{i}_"
-            rec_selected = (str(i) in selected)
-            blend_count = int(request.form.get(f"{rec_prefix}blend_count", 1))
-            blends = []
-            for j in range(blend_count):
-                try:
-                    name = request.form[f"{rec_prefix}blend_{j}_name"]
-                    n = float(request.form[f"{rec_prefix}blend_{j}_n"])
-                    p = float(request.form[f"{rec_prefix}blend_{j}_p"])
-                    k = float(request.form[f"{rec_prefix}blend_{j}_k"])
-                    price = float(request.form[f"{rec_prefix}blend_{j}_price"])
-                    bag_size = float(request.form[f"{rec_prefix}blend_{j}_bag_size"])
-                    lbs_per_acre = float(request.form[f"{rec_prefix}blend_{j}_lbs_per_acre"])
-                except:
-                    continue
-                blends.append({
-                    "name": name, "n": n, "p": p, "k": k,
-                    "price": price, "bag_size": bag_size,
-                    "lbs_per_acre": lbs_per_acre,
-                })
-            recommendations.append({
-                "selected": rec_selected,
-                "blends": blends,
-                "type": request.form[f"{rec_prefix}type"],
-                "note": request.form.get(f"{rec_prefix}note", ""),
-            })
-        custom_recs = []
-        custom_count = int(request.form.get('custom_count', 0))
-        for i in range(custom_count):
-            prefix = f"custom_{i}_"
-            if not request.form.get(f"{prefix}enabled"): continue
-            blend_count = int(request.form.get(f"{prefix}blend_count", 1))
-            blends = []
-            for j in range(blend_count):
-                try:
-                    name = request.form[f"{prefix}blend_{j}_name"]
-                    n = float(request.form[f"{prefix}blend_{j}_n"])
-                    p = float(request.form[f"{prefix}blend_{j}_p"])
-                    k = float(request.form[f"{prefix}blend_{j}_k"])
-                    price = float(request.form[f"{prefix}blend_{j}_price"])
-                    bag_size = float(request.form[f"{prefix}blend_{j}_bag_size"])
-                    # lbs_per_acre removed for custom blends
-                    # lbs_per_acre = float(request.form[f"{prefix}blend_{j}_lbs_per_acre"])
-                except:
-                    continue
-                blends.append({
-                    "name": name, "n": n, "p": p, "k": k,
-                    "price": price, "bag_size": bag_size,
-                    # "lbs_per_acre": lbs_per_acre,
-                })
-            custom_recs.append({
-                "selected": True,
-                "blends": blends,
-                "type": "custom",
-                "note": "",
-            })
-
-        session['customize'] = {
-            "recommendations": recommendations,
-            "custom_recs": custom_recs,
-        }
+        session['blend_prices'] = {blend['name']: blend['price'] for blend in blends}
+        session['blend_bagsizes'] = {blend['name']: blend['bag_size'] for blend in blends}
         return redirect(url_for('results'))
 
+    blend_prices = session.get('blend_prices', {})
+    blend_bagsizes = session.get('blend_bagsizes', {})
+    for blend in blends:
+        if blend['name'] in blend_prices:
+            blend['price'] = blend_prices[blend['name']]
+        if blend['name'] in blend_bagsizes:
+            blend['bag_size'] = blend_bagsizes[blend['name']]
+    return render_template('index.html', blends=blends, error=error, form_defaults=form_defaults)
+
+@app.route('/results', methods=['GET', 'POST'])
+def results():
     blends = load_fertilizer_blends()
     inputs = session.get('inputs', {})
-    n = inputs.get('n', 0)
-    p = inputs.get('p', 0)
-    k = inputs.get('k', 0)
-    area = inputs.get('area', 0)
-    area_type = inputs.get('area_type', 'acres')
-    selected_blend_names = inputs.get('selected_blends', [])
-
-    selected_blends = [b for b in blends if b["name"] in selected_blend_names]
-    matches = best_matches(n, p, k, selected_blends, area, area_type)
-    all_matches = best_matches(n, p, k, blends, area, area_type)
-    best_overall = all_matches[0] if all_matches else None
-
-    def match_key(m):
-        return set(m["names"])
-    matches_keys = [match_key(m) for m in matches]
-    overall_key = match_key(best_overall) if best_overall else None
-    show_best_overall = best_overall and overall_key not in matches_keys
-
-    recommendations = []
-    for m in matches:
-        blends_data = []
-        for blend, lbs_per_acre in m["blends"]:
-            blends_data.append({
-                "name": blend["name"], "n": blend["n"], "p": blend["p"], "k": blend["k"],
-                "price": blend["price"], "bag_size": blend["bag_size"], "lbs_per_acre": lbs_per_acre
-            })
-        recommendations.append({
-            "type": m["type"],
-            "note": "",
-            "blends": blends_data,
-            "selected": True,
-        })
-    if show_best_overall:
-        blends_data = []
-        for blend, lbs_per_acre in best_overall["blends"]:
-            blends_data.append({
-                "name": blend["name"], "n": blend["n"], "p": blend["p"], "k": blend["k"],
-                "price": blend["price"], "bag_size": blend["bag_size"], "lbs_per_acre": lbs_per_acre
-            })
-        recommendations.append({
-            "type": best_overall["type"],
-            "note": "This is the best overall match, but you did not select it as available to you.",
-            "blends": blends_data,
-            "selected": False,
-        })
-
-    return render_template(
-        'customize.html',
-        recommendations=recommendations,
-        max_custom=3
-    )
-
-@app.route('/results')
-def results():
-    inputs = session.get('inputs', {})
-    customize = session.get('customize', {})
-    n_req = float(inputs.get('n', 0))
-    p_req = float(inputs.get('p', 0))
-    k_req = float(inputs.get('k', 0))
+    n = float(inputs.get('n', 0))
+    p = float(inputs.get('p', 0))
+    k = float(inputs.get('k', 0))
     area = float(inputs.get('area', 0))
     area_type = inputs.get('area_type', 'acres')
-    if area_type == 'acres':
-        total_area = area
-    else:
-        total_area = area / 43560
+    selected_blend_names = inputs.get('selected_blends', [])
+    custom_blends = session.get('custom_blends', [])
 
-    recs = customize.get('recommendations', [])
-    selected_recs = [r for r in recs if r.get('selected')]
-    custom_recs = customize.get('custom_recs', [])
-    all_recs = selected_recs + custom_recs
-
-    results = []
-    for idx, rec in enumerate(all_recs):
-        blends = rec['blends']
-        blend_calcs = []
-        total_cost = 0
-        total_applied_n = 0
-        total_applied_p = 0
-        total_applied_k = 0
-        for blend in blends:
-            lbs_per_acre = float(blend['lbs_per_acre']) if 'lbs_per_acre' in blend else 0
-            bag_size = float(blend['bag_size'])
-            price = float(blend['price'])
-            lbs_total = lbs_per_acre * total_area
-            bags = int(-(-lbs_total // bag_size)) if lbs_per_acre > 0 else 0
-            actual_supplied_lbs = bags * bag_size if lbs_per_acre > 0 else 0
-            cost = bags * price if lbs_per_acre > 0 else 0
-            applied_n = actual_supplied_lbs * (float(blend['n']) / 100)
-            applied_p = actual_supplied_lbs * (float(blend['p']) / 100)
-            applied_k = actual_supplied_lbs * (float(blend['k']) / 100)
-            blend_calcs.append({
-                'name': blend['name'],
-                'lbs_per_acre': lbs_per_acre,
-                'bag_size': bag_size,
-                'bags': bags,
-                'price': price,
-                'cost': cost,
-                'applied_n': applied_n,
-                'applied_p': applied_p,
-                'applied_k': applied_k,
-                'lbs_total': actual_supplied_lbs,
-            })
-            total_cost += cost
-            total_applied_n += applied_n
-            total_applied_p += applied_p
-            total_applied_k += applied_k
-        results.append({
-            'type': rec['type'] if 'type' in rec else 'custom',
-            'note': rec.get('note', ''),
-            'blends': blend_calcs,
-            'total_cost': total_cost,
-            'total_applied_n': total_applied_n,
-            'total_applied_p': total_applied_p,
-            'total_applied_k': total_applied_k,
-            'excess_n': max(0, total_applied_n - n_req * total_area),
-            'excess_p': max(0, total_applied_p - p_req * total_area),
-            'excess_k': max(0, total_applied_k - k_req * total_area),
-        })
-
-    # Add best overall if not among selected
-    blends = load_fertilizer_blends()
-    all_matches = best_matches(n_req, p_req, k_req, blends, area, area_type)
-    best_overall = all_matches[0] if all_matches else None
-
-    def match_key(blends_list):
-        return set(b['name'] for b in blends_list)
-
-    selected_keys = [match_key([b for b in rec['blends']]) for rec in results]
-    best_key = match_key([b for b, _ in best_overall['blends']]) if best_overall else None
-    show_best_overall = best_overall and best_key not in selected_keys
-
-    if results:
-        min_cost = min(r["total_cost"] for r in results)
-        min_excess = min(r["excess_n"] + r["excess_p"] + r["excess_k"] for r in results)
-        if n_req == p_req == k_req:
-            for r in results:
-                r["is_most_cost_effective"] = math.isclose(r["total_cost"], min_cost)
-                r["is_most_precise"] = False
-        else:
-            for r in results:
-                r["is_most_cost_effective"] = math.isclose(r["total_cost"], min_cost)
-                r["is_most_precise"] = math.isclose(r["excess_n"] + r["excess_p"] + r["excess_k"], min_excess)
-
-    best_overall_result = None
-    if show_best_overall:
-        blend_calcs = []
-        total_cost = 0
-        total_applied_n = 0
-        total_applied_p = 0
-        total_applied_k = 0
-        for blend, lbs_per_acre in best_overall['blends']:
-            bag_size = blend['bag_size']
-            price = blend['price']
-            lbs_total = lbs_per_acre * total_area
-            bags = int(-(-lbs_total // bag_size))
-            actual_supplied_lbs = bags * bag_size
-            cost = bags * price
-            applied_n = actual_supplied_lbs * (blend['n'] / 100)
-            applied_p = actual_supplied_lbs * (blend['p'] / 100)
-            applied_k = actual_supplied_lbs * (blend['k'] / 100)
-            blend_calcs.append({
-                'name': blend['name'],
-                'lbs_per_acre': lbs_per_acre,
-                'bag_size': bag_size,
-                'bags': bags,
-                'price': price,
-                'cost': cost,
-                'applied_n': applied_n,
-                'applied_p': applied_p,
-                'applied_k': applied_k,
-                'lbs_total': actual_supplied_lbs,
-            })
-            total_cost += cost
-            total_applied_n += applied_n
-            total_applied_p += applied_p
-            total_applied_k += applied_k
-        best_overall_result = {
-            'type': best_overall['type'],
-            'note': "This is the best overall match, but you did not select it as available to you.",
-            'blends': blend_calcs,
-            'total_cost': total_cost,
-            'total_applied_n': total_applied_n,
-            'total_applied_p': total_applied_p,
-            'total_applied_k': total_applied_k,
-            'excess_n': max(0, total_applied_n - n_req * total_area),
-            'excess_p': max(0, total_applied_p - p_req * total_area),
-            'excess_k': max(0, total_applied_k - k_req * total_area),
-            'is_most_cost_effective': True,
-            'is_most_precise': False
-        }
-
-    return render_template(
-        'results.html',
-        results=results,
-        best_overall_result=best_overall_result,
-        n_req=n_req,
-        p_req=p_req,
-        k_req=k_req,
-        total_area=total_area,
-        area_type=area_type,
+    top3, custom_results, note = get_recommendations(
+        n, p, k, blends, area, area_type, user_selected_blends=selected_blend_names, custom_blends=custom_blends
     )
+    for rec in top3:
+        rec['total_applied_n'] = rec.get('applied_n', 0)
+        rec['total_applied_p'] = rec.get('applied_p', 0)
+        rec['total_applied_k'] = rec.get('applied_k', 0)
+    for rec in custom_results:
+        rec['total_applied_n'] = rec.get('applied_n', 0)
+        rec['total_applied_p'] = rec.get('applied_p', 0)
+        rec['total_applied_k'] = rec.get('applied_k', 0)
+    all_results = []
+    if top3:
+        all_results.extend(top3)
+    return render_template('results.html', results=all_results, custom_results=custom_results, not_typical=False, fallback_used=False, best_note=note)
 
-@app.route('/share', methods=['GET', 'POST'])
+@app.route('/download_pdf')
+def download_pdf():
+    blends = load_fertilizer_blends()
+    inputs = session.get('inputs', {})
+    n = float(inputs.get('n', 0))
+    p = float(inputs.get('p', 0))
+    k = float(inputs.get('k', 0))
+    area = float(inputs.get('area', 0))
+    area_type = inputs.get('area_type', 'acres')
+    selected_blend_names = inputs.get('selected_blends', [])
+    custom_blends = session.get('custom_blends', [])
+
+    top3, custom_results, note = get_recommendations(
+        n, p, k, blends, area, area_type, user_selected_blends=selected_blend_names, custom_blends=custom_blends
+    )
+    for rec in top3:
+        rec['total_applied_n'] = rec.get('applied_n', 0)
+        rec['total_applied_p'] = rec.get('applied_p', 0)
+        rec['total_applied_k'] = rec.get('applied_k', 0)
+    for rec in custom_results:
+        rec['total_applied_n'] = rec.get('applied_n', 0)
+        rec['total_applied_p'] = rec.get('applied_p', 0)
+        rec['total_applied_k'] = rec.get('applied_k', 0)
+    all_results = []
+    if top3:
+        all_results.extend(top3)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "Davidson Fertilizer Calculator Results", ln=True, align="C")
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, f"Prescription: N={n} P={p} K={k} Area={area} {area_type}", ln=True)
+    if note:
+        pdf.set_text_color(200,80,0)
+        pdf.cell(0, 10, note, ln=True)
+        pdf.set_text_color(0,0,0)
+    for idx, result in enumerate(all_results):
+        pdf.ln(4)
+        pdf.set_font("Arial", 'B', 12)
+        if result.get("excess_warning"):
+            pdf.set_text_color(200,80,0)
+            pdf.cell(0, 8, result["excess_warning"], ln=True)
+            pdf.set_text_color(0,0,0)
+        pdf.set_font("Arial", size=12)
+        pdf.cell(0, 8, f"Type: {result['type'].capitalize()} | {' + '.join(result['names'])}", ln=True)
+        pdf.cell(0, 8, f"  Total Cost: ${result['total_cost']:.2f}", ln=True)
+        pdf.cell(0, 8, f"  Total N applied: {result.get('total_applied_n', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Total P applied: {result.get('total_applied_p', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Total K applied: {result.get('total_applied_k', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess N: {result.get('excess_n',0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess P: {result.get('excess_p',0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess K: {result.get('excess_k',0):.2f} lbs", ln=True)
+        for blend in result["blends"]:
+            pdf.cell(0, 8, f"    - {blend['name']}: {blend['bags']} bags @ ${blend['cost']:.2f}", ln=True)
+        pdf.ln(2)
+    if custom_results:
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 12, "Custom Solutions", ln=True)
+    for rec in custom_results:
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 8, "Custom Solution", ln=True)
+        if rec.get("note"):
+            pdf.set_text_color(200,80,0)
+            pdf.cell(0, 8, rec["note"], ln=True)
+            pdf.set_text_color(0,0,0)
+        pdf.set_font("Arial", size=12)
+        pdf.cell(0, 8, f"Type: {rec['type'].replace('custom-', '').capitalize()} | {' + '.join(rec['names'])}", ln=True)
+        pdf.cell(0, 8, f"  Total Cost: ${rec['total_cost']:.2f}", ln=True)
+        pdf.cell(0, 8, f"  Total N applied: {rec.get('applied_n', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Total P applied: {rec.get('applied_p', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Total K applied: {rec.get('applied_k', 0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess N: {rec.get('excess_n',0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess P: {rec.get('excess_p',0):.2f} lbs", ln=True)
+        pdf.cell(0, 8, f"  Excess K: {rec.get('excess_k',0):.2f} lbs", ln=True)
+        for blend in rec["blends"]:
+            pdf.cell(0, 8, f"    - {blend['name']}: {blend['bags']} bags @ ${blend['cost']:.2f}", ln=True)
+        pdf.ln(2)
+    pdf_bytes = pdf.output(dest='S').encode('latin1')
+    pdf_output = io.BytesIO(pdf_bytes)
+    pdf_output.seek(0)
+    return send_file(pdf_output, mimetype='application/pdf', as_attachment=True, download_name="fertilizer_recommendations.pdf")
+
+@app.route('/share')
 def share():
-    feedback_sent = False
-    feedback_limit_reached = False
-    if request.method == 'POST':
-        if can_accept_feedback():
-            email = request.form.get('email')
-            feedback = request.form.get('feedback')
-            msg = Message(
-                subject="Feedback from Davidson Fertilizer Calculator",
-                recipients=["jrd0085@auburn.edu"],
-                body=f"From: {email or 'Anonymous'}\n\n{feedback}"
-            )
-            try:
-                mail.send(msg)
-                increment_feedback_counter()
-                feedback_sent = True
-            except Exception as e:
-                feedback_sent = False
-                print("Email send failed:", e)
-        else:
-            feedback_limit_reached = True
-    return render_template('share.html', feedback_sent=feedback_sent, feedback_limit_reached=feedback_limit_reached)
+    return render_template('share.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

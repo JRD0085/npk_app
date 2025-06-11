@@ -1,159 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Davidson Fertilizer Calculator</title>
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background: #f9fbfd;
-        }
-        .centered-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 4vh;
-        }
-        form {
-            background: #fff;
-            padding: 2em 2em 1em 2em;
-            border-radius: 10px;
-            box-shadow: 0 0 20px #d0dbeb55;
-            min-width: 340px;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 1em;
-            font-weight: 700;
-        }
-        label, select, input {
-            font-size: 1.08em;
-            margin-bottom: 0.7em;
-        }
-        .error {
-            color: #c0392b;
-            font-weight: bold;
-            background: #fbeee9;
-            border: 1px solid #d99;
-            border-radius: 5px;
-            padding: 0.5em 1em;
-            margin-bottom: 1em;
-            text-align: center;
-        }
-        .blend-list legend {
-            font-weight: bold;
-            margin-bottom: 0.5em;
-        }
-        .blend-list label {
-            display: block;
-            margin-bottom: 0.3em;
-        }
-        button[type=submit] {
-            background-color: #2979ff;
-            color: white;
-            border: none;
-            padding: 0.7em 2.2em;
-            border-radius: 5px;
-            font-size: 1.1em;
-            font-weight: 700;
-            margin: 1em auto 0 auto;
-            display: block;
-            transition: background 0.2s;
-            cursor: pointer;
-        }
-        button[type=submit]:hover, button[type=submit]:focus {
-            background: #1565c0;
-        }
-        .hint {
-            font-size: 0.95em;
-            color: #444;
-            margin-bottom: 1em;
-            background: #f6fafc;
-            border-radius: 6px;
-            padding: 0.7em 1em;
-            border-left: 4px solid #1976d2;
-        }
-        .price-note {
-            font-size: 0.93em;
-            color: #555;
-            margin-top: 0.5em;
-        }
-    </style>
-    <script>
-    function toggleAllBlends(source) {
-        let checkboxes = document.getElementsByClassName('blend-checkbox');
-        for (let i = 0; i < checkboxes.length; i++) {
-            checkboxes[i].checked = source.checked;
-        }
-    }
-    function validateForm() {
-        let n = document.forms[0]["n"].value;
-        let p = document.forms[0]["p"].value;
-        let k = document.forms[0]["k"].value;
-        let area = document.forms[0]["area"].value;
-        if (n == "" || p == "" || k == "" || area == "" ||
-            isNaN(n) || isNaN(p) || isNaN(k) || isNaN(area) ||
-            n < 0 || p < 0 || k < 0 || area <= 0) {
-            alert("Please enter valid, positive numbers for all numeric fields.");
-            return false;
-        }
-        let blends = document.getElementsByClassName('blend-checkbox');
-        let selected = false;
-        for (let i = 0; i < blends.length; i++) {
-            if (blends[i].checked) selected = true;
-        }
-        if (!selected) {
-            alert("Please select at least one fertilizer blend.");
-            return false;
-        }
-        return true;
-    }
-    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="centered-container">
     <h1>Davidson Fertilizer Calculator</h1>
-    <form method="post" onsubmit="return validateForm()">
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
-        <label>N requirement (lbs/acre): <input type="number" step="any" min="0" name="n" required></label><br>
-        <label>P₂O₅ requirement (lbs/acre): <input type="number" step="any" min="0" name="p" required></label><br>
-        <label>K₂O requirement (lbs/acre): <input type="number" step="any" min="0" name="k" required></label><br>
-        <label>Area: <input type="number" step="any" min="0.01" name="area" required></label>
+    <div class="info-highlight">
+        Crop specific prescribed values for <b>N, P₂O₅, and K₂O</b> are obtained by soil testing.<br>
+        Soil testing can be performed at Auburn University or other Institutions.<br>
+        Contact your local Co-Op for further information on how to gather a soil sample and obtain a soil test.<br>
+        <span style="color:#e87722;font-weight:600;">Area input can be in acres or square feet, but must be defined by the drop tab.</span>
+    </div>
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+    <form method="post" autocomplete="on">
+        <span class="section-title">Prescription</span>
+        <div class="form-caption">Set your target nutrients and area to be fertilized:</div>
+        <label>N (lbs/acre): <input required type="number" step="any" name="n" value="{{ form_defaults.n or '' }}"></label><br>
+        <label>P (lbs/acre): <input required type="number" step="any" name="p" value="{{ form_defaults.p or '' }}"></label><br>
+        <label>K (lbs/acre): <input required type="number" step="any" name="k" value="{{ form_defaults.k or '' }}"></label><br>
+        <label>Area: <input required type="number" step="any" name="area" value="{{ form_defaults.area or '' }}"></label>
         <select name="area_type">
-            <option value="acres">acres</option>
-            <option value="sqft">sq ft</option>
-        </select><br><br>
-        <div class="hint">
-            Crop specific prescribed values for N, P₂O₅, and K₂O are obtained by soil testing. Soil testing can be performed at Auburn University or other Institutions. Contact your local Co-Op for further information on how to gather a soil sample and obtain a soil test. Area input can be in acres or square feet, but must be defined by the drop tab.
-        </div>
-        <fieldset class="blend-list">
-            <legend>Select available fertilizer blends:</legend>
-            <label>
-                <input type="checkbox" id="select-all" onclick="toggleAllBlends(this)">
-                <strong>Select All</strong>
-            </label><br>
+            <option value="acres" {% if form_defaults.area_type == "acres" %}selected{% endif %}>Acres</option>
+            <option value="sqft" {% if form_defaults.area_type == "sqft" %}selected{% endif %}>Square Feet</option>
+        </select><br>
+        <span class="section-title">Available Fertilizer Blends</span>
+        <div class="form-caption">Select blends available to you or select all. 
+Default prices reflect national averages, you may edit bag size and price for each blend:</div>
+        <div class="blends-list">
+            <div class="select-all-row">
+                <input type="checkbox" id="select_all_blends" onclick="selectAllBlends(this)">
+                <label for="select_all_blends"><b>Select All</b></label>
+            </div>
             {% for blend in blends %}
-                <label>
-                    <input type="checkbox" class="blend-checkbox" name="blends" value="{{ blend.name }}">
-                    {{ "%d-%d-%d"|format(blend.n,blend.p,blend.k) }}, ${{ "%.2f"|format(blend.price) }} / {{ "%.0f"|format(blend.bag_size) }}lbs
-                </label>
+                <input type="checkbox" name="blends" value="{{ blend.name }}"
+                    {% if blend.name in (form_defaults.selected_blends or []) %}checked{% endif %} class="blend-checkbox">
+                {{ blend.name }}
+                $<input type="number" name="price_{{ blend.name|replace(' ', '_') }}"
+                        value="{{ '%.2f'|format(blend.price) }}"
+                        step="0.01"
+                        style="width:70px;"
+                        min="0" required>
+                /
+                <input type="number" name="bag_size_{{ blend.name|replace(' ', '_') }}"
+                        value="{{ '%.0f'|format(blend.bag_size if blend.bag_size else 50) }}"
+                        min="1" step="1"
+                        style="width:60px;"
+                        required>lbs
+                <br>
             {% endfor %}
-        </fieldset>
-        <div class="price-note">
-            Prices listed reflect current national averages and shall be used as reference in the absence of an updated price sheet from your local distributor.
         </div>
-        <button type="submit" id="next-btn">Next</button>
+        <div class="custom-blends-section">
+            <div class="custom-blend-title section-title">User-Defined Custom Blend or Combo</div>
+            <div class="form-caption">Optionally define a custom single blend or combo (up to two components):</div>
+            <div class="custom-blend-group">
+                <label>
+                    <input type="checkbox" id="custom_enabled" name="custom_enabled"
+                        {% if custom_blends and custom_blends|length > 0 %}checked{% endif %}>
+                    Enable Custom Blend/Combo
+                </label>
+                <div class="custom-blend-combo" id="custom_blend_combo">
+                    {% for j in range(2) %}
+                        <div style="margin-bottom: 4px;">
+                            <label>Blend Name: <input name="custom_blend_{{j}}_name" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].name}}{% endif %}"></label>
+                            <label>N: <input type="number" step="any" name="custom_blend_{{j}}_n" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].n}}{% endif %}"></label>
+                            <label>P: <input type="number" step="any" name="custom_blend_{{j}}_p" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].p}}{% endif %}"></label>
+                            <label>K: <input type="number" step="any" name="custom_blend_{{j}}_k" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].k}}{% endif %}"></label>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label>Bag Size: <input type="number" step="any" name="custom_blend_{{j}}_bag_size" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].bag_size}}{% else %}50{% endif %}"></label>
+                            <label style="margin-left:16px;">Price/bag: <input type="number" step="any" name="custom_blend_{{j}}_price" class="input-small"
+                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].price}}{% endif %}"></label>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="button-row">
+            <button type="submit">Calculate</button>
+        </div>
     </form>
 </div>
+<div class="footer">
+    Auburn University Department of Civil and Environmental Engineering
+</div>
 <script>
-document.onkeydown = function(e){
-    let next = document.getElementById("next-btn");
-    if (e.key === "ArrowRight") {
-        next.focus();
+function selectAllBlends(source) {
+    let checkboxes = document.querySelectorAll('.blend-checkbox');
+    for (const box of checkboxes) { box.checked = source.checked; }
+}
+// Automatically check custom_enabled if user inputs in any custom blend field
+document.addEventListener('DOMContentLoaded', function() {
+    function autoCheckCustomEnable() {
+        document.getElementById('custom_enabled').checked = true;
     }
-};
+    var customInputs = document.querySelectorAll('#custom_blend_combo input[type="text"], #custom_blend_combo input[type="number"]');
+    for (var i = 0; i < customInputs.length; i++) {
+        customInputs[i].addEventListener('input', autoCheckCustomEnable);
+    }
+});
 </script>
 </body>
 </html>

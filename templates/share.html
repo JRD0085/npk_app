@@ -1,123 +1,40 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Share & Feedback</title>
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet">
-    <style>
-        body { font-family: 'Roboto', sans-serif; background: #f9fbfd; }
-        .centered-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 4vh;
-        }
-        .share-panel {
-            background: #fff;
-            border-radius: 10px;
-            padding: 2em 3em 2em 3em;
-            box-shadow: 0 0 20px #d0dbeb44;
-            text-align: center;
-            min-width: 320px;
-            max-width: 560px;
-        }
-        h1 {
-            font-weight: 700;
-            margin-bottom: 0.7em;
-        }
-        .feedback-form label {
-            display: block;
-            margin: 1em 0 0.5em 0;
-            font-weight: bold;
-        }
-        .feedback-form input, .feedback-form textarea {
-            width: 90%;
-            padding: 0.5em;
-            margin-bottom: 1em;
-            border-radius: 5px;
-            border: 1px solid #aaa;
-            font-size: 1.05em;
-        }
-        .feedback-form button {
-            background: #2979ff;
-            color: white;
-            border: none;
-            padding: 0.7em 2.2em;
-            border-radius: 5px;
-            font-size: 1.1em;
-            font-weight: 700;
-            margin-top: 1em;
-            transition: background 0.2s;
-            cursor: pointer;
-        }
-        .feedback-form button:hover, .feedback-form button:focus {
-            background: #1565c0;
-        }
-        .share-link {
-            font-size: 1.08em;
-            margin: 0.8em 0;
-        }
-        .success-message {
-            color: #388e3c;
-            font-weight: bold;
-            margin-top: 1em;
-        }
-        .btn-group {
-            display: flex;
-            justify-content: center;
-            gap: 1em;
-            margin-top: 1.5em;
-        }
-        button {
-            background: #2979ff;
-            color: white;
-            border: none;
-            padding: 0.6em 1.6em;
-            border-radius: 5px;
-            font-size: 1.05em;
-            font-weight: 700;
-            margin: 1em 0 0 0;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        button:hover, button:focus { background: #1565c0; }
-    </style>
+    <meta charset="UTF-8">
+    <title>Share Davidson Fertilizer Calculator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="centered-container">
-    <div class="share-panel">
-        <h1>Share Results & Feedback</h1>
-        <div class="share-link">
-            <b>Share this page:</b><br>
-            <input type="text" style="width:80%;" readonly value="{{ request.url_root }}" onclick="this.select();document.execCommand('copy');">
-            <span style="color:#888;font-size:0.95em;">(Copy link to share your tool)</span>
+    <div class="share-card">
+        <div class="share-title">Tell Your Friends!</div>
+        <div class="share-message">
+           Achieve healthier crops, protect your watershed, and promote sustainable agriculture.<br>
+            Share the <b>Davidson Fertilizer Calculator</b> with your friends, colleagues, and community!
         </div>
-        <form method="post" class="feedback-form">
-            <label for="email">Your email (optional):</label>
-            <input type="email" id="email" name="email" placeholder="you@email.com">
-            <label for="feedback">Feedback or suggestions:</label>
-            <textarea id="feedback" name="feedback" rows="4" placeholder="Let us know how we can improve!"></textarea>
-            <button type="submit">Send Feedback</button>
-            {% if feedback_sent %}
-                <div class="success-message">Thank you! Your feedback has been sent.</div>
-            {% endif %}
-        </form>
-        <div class="btn-group">
-            <form method="get" action="{{ url_for('results') }}">
-                <button type="submit" id="back-btn">Back</button>
-            </form>
-            <form method="get" action="{{ url_for('index') }}">
-                <button type="submit" id="restart-btn">Start Over</button>
-            </form>
+        <div class="share-buttons">
+            <a class="share-btn" href="https://www.facebook.com/sharer/sharer.php?u={{ request.url_root }}" target="_blank" rel="noopener">
+                Share on Facebook
+            </a>
+            <a class="share-btn" href="https://twitter.com/intent/tweet?url={{ request.url_root }}&text=Check+out+the+Davidson+Fertilizer+Calculator+from+Auburn+University%21" target="_blank" rel="noopener">
+                Share on Twitter/X
+            </a>
+            <a class="share-btn" href="mailto:?subject=Davidson Fertilizer Calculator&body=Check out this Auburn University fertilizer calculator: {{ request.url_root }}">
+                Share via Email
+            </a>
+            <button class="share-btn" onclick="navigator.clipboard.writeText('{{ request.url_root }}');alert('Link copied!');">
+                Copy Link
+            </button>
+        </div>
+        <div style="color:#e87722;font-weight:600;margin-top:18px;">
+            War Eagle! <span style="font-weight:400;color:#03244d;">Thank you for supporting Auburn's mission for sustainable agriculture.</span>
         </div>
     </div>
+    <div class="button-row">
+        <a href="{{ url_for('index') }}" class="btn">Back to Start</a>
+    </div>
 </div>
-<script>
-document.onkeydown = function(e){
-    let back = document.getElementById("back-btn");
-    let restart = document.getElementById("restart-btn");
-    if (e.key === "ArrowLeft" && back) back.focus();
-    if (e.key === "ArrowRight" && restart) restart.focus();
-};
-</script>
+{% include "_footer.html" %}
 </body>
 </html>
