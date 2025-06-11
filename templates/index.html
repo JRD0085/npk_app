@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <title>Davidson Fertilizer Calculator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .hidden { display:none; }
+    </style>
 </head>
 <body>
 <div class="centered-container">
@@ -17,7 +20,7 @@
     {% if error %}
       <div class="error">{{ error }}</div>
     {% endif %}
-    <form method="post" autocomplete="on">
+    <form method="post" autocomplete="on" id="fert-form">
         <span class="section-title">Prescription</span>
         <div class="form-caption">Set your target nutrients and area to be fertilized:</div>
         <label>N (lbs/acre): <input required type="number" step="any" name="n" value="{{ form_defaults.n or '' }}"></label><br>
@@ -28,9 +31,24 @@
             <option value="acres" {% if form_defaults.area_type == "acres" %}selected{% endif %}>Acres</option>
             <option value="sqft" {% if form_defaults.area_type == "sqft" %}selected{% endif %}>Square Feet</option>
         </select><br>
+
+        <span class="section-title">Price Input Unit</span>
+        <div class="form-caption">
+            Use this dropdown to input prices for all blends as either price per 50 lb bag or price per ton.<br>
+            When you change the unit, all price fields will reset to default values for that unit. <br>
+Results will be displayed in bags or tons accordingly.
+        </div>
+        <select name="price_unit" id="price_unit" onchange="document.getElementById('unit_change').value='1'; this.form.submit();" style="margin-bottom: 10px;">
+            <option value="bag" {% if form_defaults.price_unit == "bag" or not form_defaults.price_unit %}selected{% endif %}>per 50 lb bag</option>
+            <option value="ton" {% if form_defaults.price_unit == "ton" %}selected{% endif %}>per ton</option>
+        </select>
+        <input type="hidden" id="unit_change" name="unit_change" value="0"><br>
+
         <span class="section-title">Available Fertilizer Blends</span>
-        <div class="form-caption">Select blends available to you or select all. 
-Default prices reflect national averages, you may edit bag size and price for each blend:</div>
+        <div class="form-caption">
+            Select blends available to you or select all.<br>
+            Default prices reflect national averages for the chosen unit, you may edit bag size and price for each blend:
+        </div>
         <div class="blends-list">
             <div class="select-all-row">
                 <input type="checkbox" id="select_all_blends" onclick="selectAllBlends(this)">
@@ -43,14 +61,21 @@ Default prices reflect national averages, you may edit bag size and price for ea
                 $<input type="number" name="price_{{ blend.name|replace(' ', '_') }}"
                         value="{{ '%.2f'|format(blend.price) }}"
                         step="0.01"
-                        style="width:70px;"
+                        style="width:80px;"
                         min="0" required>
                 /
-                <input type="number" name="bag_size_{{ blend.name|replace(' ', '_') }}"
-                        value="{{ '%.0f'|format(blend.bag_size if blend.bag_size else 50) }}"
-                        min="1" step="1"
-                        style="width:60px;"
-                        required>lbs
+                <input 
+                    type="number" 
+                    name="bag_size_{{ blend.name|replace(' ', '_') }}" 
+                    value="{% if price_unit == 'ton' %}1{% else %}{{ '%.0f'|format(blend.bag_size if blend.bag_size else 50) }}{% endif %}"
+                    min="1" 
+                    step="1"
+                    style="width:60px; {% if price_unit == 'ton' %}display:none;{% endif %}"
+                    {% if price_unit == 'ton' %}readonly disabled{% endif %}
+                    required
+                >
+                <span class="bag-unit-label" {% if price_unit == 'ton' %}style="display:none;"{% endif %}>lbs</span>
+                <span class="ton-unit-label" {% if price_unit != 'ton' %}style="display:none;"{% endif %}>ton</span>
                 <br>
             {% endfor %}
         </div>
@@ -76,30 +101,72 @@ Default prices reflect national averages, you may edit bag size and price for ea
                                 value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].k}}{% endif %}"></label>
                         </div>
                         <div style="margin-bottom: 8px;">
-                            <label>Bag Size: <input type="number" step="any" name="custom_blend_{{j}}_bag_size" class="input-small"
-                                value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].bag_size}}{% else %}50{% endif %}"></label>
-                            <label style="margin-left:16px;">Price/bag: <input type="number" step="any" name="custom_blend_{{j}}_price" class="input-small"
+                            <span class="bag-size-row" {% if price_unit == 'ton' %}style="display:none;"{% endif %}>
+                                <label>Bag Size: <input type="number" step="any" name="custom_blend_{{j}}_bag_size" class="input-small"
+                                    value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].bag_size}}{% else %}50{% endif %}"></label>
+                            </span>
+                            <label style="margin-left:16px;">Price: <input type="number" step="any" name="custom_blend_{{j}}_price" class="input-small"
                                 value="{% if custom_blends and custom_blends|length > 0 and custom_blends[0]|length > j %}{{custom_blends[0][j].price}}{% endif %}"></label>
+                            <span>
+                                {% if price_unit == 'ton' %}
+                                    per ton
+                                {% else %}
+                                    per bag
+                                {% endif %}
+                            </span>
                         </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
         <div class="button-row">
-            <button type="submit">Calculate</button>
+            <button type="submit" onclick="document.getElementById('unit_change').value='0';">Calculate</button>
         </div>
     </form>
 </div>
 <div class="footer">
-    Auburn University Department of Civil and Environmental Engineering
+    Developed by Jay Davidson - Auburn University Civil Engineering Class of 2025
 </div>
 <script>
 function selectAllBlends(source) {
     let checkboxes = document.querySelectorAll('.blend-checkbox');
     for (const box of checkboxes) { box.checked = source.checked; }
 }
-// Automatically check custom_enabled if user inputs in any custom blend field
 document.addEventListener('DOMContentLoaded', function() {
+    // Hide/show bag size/labels and update units for blends and custom blends
+    function updateBagTonFields() {
+        var priceUnit = document.getElementById('price_unit').value;
+        // Update blend list
+        let bagInputs = document.querySelectorAll('.blends-list input[name^="bag_size_"]');
+        let bagLabels = document.querySelectorAll('.bag-unit-label');
+        let tonLabels = document.querySelectorAll('.ton-unit-label');
+        for (var i = 0; i < bagInputs.length; i++) {
+            if (priceUnit === 'ton') {
+                bagInputs[i].style.display = 'none';
+                bagInputs[i].disabled = true;
+                if (bagLabels[i]) bagLabels[i].style.display = 'none';
+                if (tonLabels[i]) tonLabels[i].style.display = '';
+            } else {
+                bagInputs[i].style.display = '';
+                bagInputs[i].disabled = false;
+                if (bagLabels[i]) bagLabels[i].style.display = '';
+                if (tonLabels[i]) tonLabels[i].style.display = 'none';
+            }
+        }
+        // Update custom blends
+        var bagSizeRows = document.querySelectorAll('.bag-size-row');
+        for (var i = 0; i < bagSizeRows.length; i++) {
+            if (priceUnit === 'ton') {
+                bagSizeRows[i].style.display = 'none';
+            } else {
+                bagSizeRows[i].style.display = '';
+            }
+        }
+    }
+    updateBagTonFields();
+    document.getElementById('price_unit').addEventListener('change', updateBagTonFields);
+
+    // Automatically check custom_enabled if user inputs in any custom blend field
     function autoCheckCustomEnable() {
         document.getElementById('custom_enabled').checked = true;
     }
